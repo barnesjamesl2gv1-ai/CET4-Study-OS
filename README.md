@@ -1,6 +1,12 @@
 # CET-4 Study OS
 
-面向个人 Windows 11 + Edge 的本地英语四级备考平台。当前仓库正在开发 MVP；尚未完成真实材料或安装包实机验收。
+面向个人 Windows 11 + Edge 的本地英语四级备考平台。当前为 **0.1.0 MVP 预览版**；已实现本地导入、人工核对、自由训练及备份恢复，但尚未完成真实材料和目标机实机验收。
+
+## Windows 安装
+
+在本机执行 `powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1` 可运行测试并生成 `artifacts/CET4-Study-OS-0.1.0-Setup.exe`。安装后双击桌面快捷方式，在 Microsoft Edge 使用本地页面。安装包生成不等于目标机验收；按 [验收指南](docs/ACCEPTANCE_GUIDE.md)完成真实材料测试。
+
+可在页面创建试卷，分别上传试卷、答案和 MP3，逐题人工核对后练习。听力须预览并确认片段。日常训练可随时看答案，不计分；“备份与恢复”提供每日备份、手动备份、导出和恢复。
 
 ## 开发运行
 
@@ -18,4 +24,4 @@
 
 ## 下一步
 
-使用至少一套本人有权使用的 PDF、DOCX、扫描图片及 MP3 混合材料在目标 Windows 11 机器运行 M0 检查，人工核对提取文本、答案对齐与音频切分效果。通过后再开展 M1 本地服务、练习与备份等开发。需求和验收标准见 `docs/spec/`。
+使用至少一套本人有权使用的 PDF、DOCX、扫描图片及 MP3 混合材料，在目标 Windows 11 + Edge 机器按 `docs/ACCEPTANCE_GUIDE.md` 做完整验收。需求和原始验收标准见 `docs/spec/`；阶段进展见 `docs/IMPLEMENTATION_STATUS.md`。

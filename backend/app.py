@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 import json
+import sqlite3
+import zipfile
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,8 +19,15 @@ from backend.db import connect, data_dir
 from backend.imports import create_paper, import_question, list_assets, save_asset
 from backend.audio import confirm as confirm_audio_segment, segments as list_segments, suggestions as audio_suggestions
 from backend.practice import save_answer, save_position, session as get_practice_session, start as start_practice
+from backend.backups import backup, daily_if_needed, restore, verify
 
-app = FastAPI(title="CET-4 Study OS", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    daily_if_needed()
+    yield
+
+
+app = FastAPI(title="CET-4 Study OS", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -167,6 +178,57 @@ def practice_sessions(paper_id: str):
     with connect() as db:
         rows = db.execute("SELECT id,section,updated_at FROM practice_sessions WHERE paper_id=? ORDER BY updated_at DESC", (paper_id,)).fetchall()
     return [dict(row) for row in rows]
+
+
+@app.get("/api/backups")
+def list_backups():
+    with connect() as db:
+        rows = db.execute("SELECT id,created_at,backup_kind,relative_path,verified FROM backup_records ORDER BY created_at DESC").fetchall()
+    return [dict(row) for row in rows]
+
+
+@app.post("/api/backups")
+def create_backup():
+    return backup("manual")
+
+
+@app.get("/api/backups/{backup_id}/export")
+def export_backup(backup_id: str):
+    with connect() as db:
+        row = db.execute("SELECT relative_path FROM backup_records WHERE id=?", (backup_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "备份不存在")
+    root = data_dir().resolve()
+    target = (root / row["relative_path"]).resolve()
+    if not target.is_relative_to(root / "backups") or not target.is_file():
+        raise HTTPException(404, "备份文件不存在")
+    return FileResponse(target, filename=target.name, media_type="application/zip")
+
+
+@app.post("/api/backups/restore")
+async def restore_backup(file: UploadFile = File(...), confirmed: bool = Form(False)):
+    if not confirmed:
+        raise HTTPException(422, "请先确认恢复操作")
+    root = data_dir()
+    folder = root / "backups"
+    folder.mkdir(exist_ok=True)
+    path = folder / f"imported-{uuid.uuid4()}.zip"
+    size = 0
+    try:
+        with path.open("wb") as stream:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > 1024 * 1024 * 1024:
+                    raise HTTPException(413, "备份超过 1 GB 限制")
+                stream.write(chunk)
+        try:
+            verify(path)
+            return restore(path)
+        except (ValueError, OSError, sqlite3.DatabaseError, zipfile.BadZipFile) as error:
+            raise HTTPException(422, f"备份恢复失败：{error}") from error
+    finally:
+        if not size:
+            path.unlink(missing_ok=True)
 
 
 @app.post("/api/papers/{paper_id}/questions")

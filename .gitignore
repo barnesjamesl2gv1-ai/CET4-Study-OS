@@ -15,3 +15,7 @@ reports/
 frontend/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
+dist/
+build/
+artifacts/
+*.spec

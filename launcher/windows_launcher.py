@@ -37,6 +37,18 @@ def open_edge(url: str) -> None:
 
 
 def main() -> None:
+    if "--self-test" in sys.argv:
+        import tempfile
+        from backend.db import initialize
+        from backend.app import app  # noqa: F401 - verify packaged imports
+
+        with tempfile.TemporaryDirectory() as scratch:
+            initialize(Path(scratch) / "test.sqlite3")
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+        if not (bundle_root / "frontend" / "dist" / "index.html").is_file():
+            raise RuntimeError("前端资源未打包")
+        print("CET4StudyOS bundle self-test passed")
+        return
     if sys.platform != "win32":
         raise RuntimeError("此启动器仅用于 Windows")
     import msvcrt
@@ -64,7 +76,8 @@ def main() -> None:
     listener = choose_socket()
     port = listener.getsockname()[1]
     (root / "server.json").write_text(json.dumps({"port": port}), encoding="utf-8")
-    config = uvicorn.Config("backend.app:app", host="127.0.0.1", port=port, log_level="warning")
+    from backend.app import app
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     server = uvicorn.Server(config)
     try:
         import asyncio

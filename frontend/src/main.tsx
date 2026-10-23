@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { AudioReview } from './AudioReview';
 import { Practice } from './Practice';
+import { Backups } from './Backups';
 import './style.css';
 
 type Paper = {id:string; year:number; session_month:number; set_number:number};
@@ -28,6 +29,6 @@ function App(){
   {selected&&<><section><h2>上传原始资料</h2><p>分别上传试卷、MP3 与答案解析。上传后仍须人工核对题目、答案及音频对应关系。</p><div className="row">{([['paper','试卷'],['audio','听力音频'],['answer','答案解析']] as const).map(([role,label])=><form key={role} onSubmit={e=>upload(e,role)}><label>{label}<input type="file" required accept={role==='audio'?'.mp3':'.pdf,.docx,.png,.jpg,.jpeg'}/></label><button>上传</button></form>)}</div><ul>{assets.map(a=><li key={a.id}><a href={`/api/assets/${a.id}`}>{a.original_filename}</a> · {a.role} · {a.verification_status}</li>)}</ul></section>
   <section><h2>人工核对题目</h2><p>请对照原件填写。修订时填入旧题 ID，系统保留历史版本。</p><form className="grid" onSubmit={saveQuestion}><label>题号<input type="number" min="1" value={number} onChange={e=>setNumber(Number(e.target.value))}/></label><label>题型<select value={kind} onChange={e=>setKind(e.target.value)}>{Object.entries(kinds).map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label><label>文章或听力原文<textarea value={passage} onChange={e=>setPassage(e.target.value)}/></label><label>题干<textarea value={prompt} onChange={e=>setPrompt(e.target.value)}/></label><label>选项（每行一项）<textarea value={options} onChange={e=>setOptions(e.target.value)}/></label><label>答案<input value={answer} onChange={e=>setAnswer(e.target.value)}/></label><label>解析<textarea value={rationale} onChange={e=>setRationale(e.target.value)}/></label><label>旧题 ID（修订时填）<input value={existingId} onChange={e=>setExistingId(e.target.value)}/></label><button>已核对，保存题目</button></form><ul>{questions.map(q=><li key={q.id}>第 {q.number} 题 · {kinds[q.kind]} · 版本 {q.version} · ID {q.id}</li>)}</ul></section>
   <AudioReview paperId={selected} assets={assets} onConfirmed={()=>api<Segment[]>(`/api/papers/${selected}/segments`).then(setSegments).catch(e=>setMessage(String(e)))}/><Practice paperId={selected} questions={questions} segments={segments}/></>}
-  <p role="status">{message}</p></main>;
+  <Backups/><p role="status">{message}</p></main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
