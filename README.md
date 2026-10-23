@@ -1,6 +1,12 @@
 # CET-4 Study OS
 
-面向个人 Windows 11 + Edge 的本地英语四级备考平台。当前仓库处于 **M0 技术可行性验证**，尚未提供可用的训练平台或安装包。
+面向个人 Windows 11 + Edge 的本地英语四级备考平台。当前仓库正在开发 MVP；尚未完成真实材料或安装包实机验收。
+
+## 开发运行
+
+安装 Python 依赖：`python -m pip install -r backend/requirements.txt`。在 `frontend/` 运行 `npm ci` 与 `npm run build`。随后在仓库根目录运行 `python -m launcher.windows_launcher`，启动器只监听 `127.0.0.1`，会打开 Microsoft Edge；再次启动时会复用现有服务，默认端口占用时会选择空闲端口。
+
+数据默认保存在 `%LOCALAPPDATA%\CET4StudyOS`；开发测试可设置 `CET4_DATA_DIR` 指向独立临时目录。
 
 ## 当前可运行内容
 

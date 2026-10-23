@@ -12,3 +12,5 @@ reports/
 *.png
 *.jpg
 *.jpeg
+frontend/node_modules/
+frontend/dist/
