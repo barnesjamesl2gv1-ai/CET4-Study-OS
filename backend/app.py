@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 from backend.db import connect, data_dir
 from backend.imports import create_paper, import_question, list_assets, save_asset
+from backend.audio import confirm as confirm_audio_segment, segments as list_segments, suggestions as audio_suggestions
+from backend.practice import save_answer, save_position, session as get_practice_session, start as start_practice
 
 app = FastAPI(title="CET-4 Study OS", docs_url=None, redoc_url=None)
 
@@ -54,6 +56,7 @@ class ReviewedQuestion(BaseModel):
     number: int
     kind: str
     prompt: str = ""
+    passage_text: str = ""
     options: list[str] = Field(default_factory=list)
     answer: str | None = None
     rationale: str = ""
@@ -97,14 +100,73 @@ async def upload_asset(paper_id: str, role: str = Form(...), file: UploadFile = 
 @app.get("/api/assets/{asset_id}")
 def download_asset(asset_id: str):
     with connect() as db:
-        row = db.execute("SELECT relative_path,original_filename FROM source_assets WHERE id=?", (asset_id,)).fetchone()
+        row = db.execute("SELECT relative_path,original_filename,role FROM source_assets WHERE id=?", (asset_id,)).fetchone()
     if not row:
         raise HTTPException(404, "文件不存在")
     root = data_dir().resolve()
     target = (root / row["relative_path"]).resolve()
     if not target.is_relative_to(root / "assets") or not target.is_file():
         raise HTTPException(404, "文件不存在")
+    if row["role"] == "audio":
+        return FileResponse(target, media_type="audio/mpeg", content_disposition_type="inline")
     return FileResponse(target, filename=row["original_filename"])
+
+
+class SegmentConfirmation(BaseModel):
+    start_ms: int
+    end_ms: int
+    question_numbers: list[int]
+
+
+@app.get("/api/assets/{asset_id}/segment-suggestions")
+def segment_suggestions(asset_id: str):
+    return audio_suggestions(asset_id)
+
+
+@app.post("/api/assets/{asset_id}/segments")
+def confirm_segment(asset_id: str, segment: SegmentConfirmation):
+    return confirm_audio_segment(asset_id, segment.start_ms, segment.end_ms, segment.question_numbers)
+
+
+@app.get("/api/papers/{paper_id}/segments")
+def paper_segments(paper_id: str):
+    return list_segments(paper_id)
+
+
+class NewPractice(BaseModel):
+    paper_id: str
+    section: str
+
+
+class Answer(BaseModel):
+    selected: str
+
+
+@app.post("/api/practice/sessions")
+def new_practice(request: NewPractice):
+    return start_practice(request.paper_id, request.section)
+
+
+@app.get("/api/practice/sessions/{session_id}")
+def practice_session(session_id: str):
+    return get_practice_session(session_id)
+
+
+@app.put("/api/practice/sessions/{session_id}/answers/{question_id}")
+def practice_answer(session_id: str, question_id: str, answer: Answer):
+    return save_answer(session_id, question_id, answer.selected)
+
+
+@app.put("/api/practice/sessions/{session_id}/position/{question_id}")
+def practice_position(session_id: str, question_id: str):
+    return save_position(session_id, question_id)
+
+
+@app.get("/api/papers/{paper_id}/practice-sessions")
+def practice_sessions(paper_id: str):
+    with connect() as db:
+        rows = db.execute("SELECT id,section,updated_at FROM practice_sessions WHERE paper_id=? ORDER BY updated_at DESC", (paper_id,)).fetchall()
+    return [dict(row) for row in rows]
 
 
 @app.post("/api/papers/{paper_id}/questions")
@@ -115,13 +177,14 @@ def add_reviewed_question(paper_id: str, question: ReviewedQuestion):
 @app.get("/api/papers/{paper_id}/questions")
 def paper_questions(paper_id: str):
     with connect() as db:
-        rows = db.execute("""SELECT q.id,q.ordinal,q.question_kind,v.version_no,v.prompt_text,
+        rows = db.execute("""SELECT q.id,q.ordinal,q.question_kind,p.body_text passage_text,v.version_no,v.prompt_text,
             v.options_json,v.correct_answer_json,v.rationale_text FROM questions q
+            LEFT JOIN passages p ON p.id=q.passage_id
             JOIN question_versions v ON v.question_id=q.id
             WHERE q.paper_id=? AND v.version_no=(SELECT MAX(version_no) FROM question_versions WHERE question_id=q.id)
             ORDER BY q.ordinal""", (paper_id,)).fetchall()
     return [{"id": row["id"], "number": row["ordinal"], "kind": row["question_kind"],
-             "version": row["version_no"], "prompt": row["prompt_text"],
+             "version": row["version_no"], "prompt": row["prompt_text"], "passage_text": row["passage_text"] or "",
              "options": json.loads(row["options_json"]),
              "answer": json.loads(row["correct_answer_json"]),
              "rationale": row["rationale_text"]} for row in rows]

@@ -15,6 +15,7 @@ from fastapi import HTTPException, UploadFile
 
 from backend.db import connect, data_dir
 from backend.m0_inspect import FORMATS, inspect_file, sniff
+from tinytag import TinyTag, TinyTagException
 
 MAX_BYTES = 50 * 1024 * 1024
 
@@ -75,14 +76,22 @@ async def save_asset(paper_id: str, role: str, upload: UploadFile) -> dict:
         final = assets / f"{fingerprint}{suffix}"
         if final.exists() and hashlib.sha256(final.read_bytes()).hexdigest() != fingerprint:
             raise HTTPException(500, "存储文件哈希冲突")
+        duration_ms = None
+        if role == "audio":
+            try:
+                duration_ms = round(TinyTag.get(temporary).duration * 1000)
+                if duration_ms <= 0:
+                    raise ValueError("MP3 时长无效")
+            except (TinyTagException, ValueError, OSError) as error:
+                raise HTTPException(422, f"MP3 无法读取：{type(error).__name__}") from error
         if not final.exists():
             os.replace(temporary, final)
         report = inspect_file(final)
         asset_id = str(uuid.uuid4())
         with connect() as db:
-            db.execute("INSERT INTO source_assets(id,paper_id,role,original_filename,relative_path,sha256,file_format,byte_size,verification_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO source_assets(id,paper_id,role,original_filename,relative_path,sha256,file_format,byte_size,duration_ms,verification_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                        (asset_id, paper_id, role, filename, str(final.relative_to(root)), fingerprint,
-                        report["format"], size, "invalid" if report["status"] == "invalid" else "pending", now()))
+                        report["format"], size, duration_ms, "invalid" if report["status"] == "invalid" else "pending", now()))
         return {"id": asset_id, "role": role, "filename": filename, "sha256": fingerprint,
                 "status": report["status"], "details": report["details"]}
     finally:
@@ -116,10 +125,24 @@ def import_question(paper_id: str, question: dict) -> dict:
         if not db.execute("SELECT 1 FROM papers WHERE id=?", (paper_id,)).fetchone():
             raise HTTPException(404, "试卷不存在")
         existing = db.execute("SELECT id,question_kind FROM questions WHERE paper_id=? AND ordinal=?", (paper_id, ordinal)).fetchone()
+        passage_text = question.get("passage_text", "").strip()
+        passage_id = None
+        if passage_text:
+            passage = db.execute("SELECT id FROM passages WHERE paper_id=? AND kind=? AND body_text=?",
+                                 (paper_id, kind, passage_text)).fetchone()
+            if passage:
+                passage_id = passage["id"]
+            else:
+                passage_id = str(uuid.uuid4())
+                db.execute("INSERT INTO passages(id,paper_id,kind,body_text,verification_status) VALUES(?,?,?,?,?)",
+                           (passage_id, paper_id, kind, passage_text, "verified"))
         if existing:
             if existing["id"] != question.get("existing_question_id") or existing["question_kind"] != kind:
                 raise HTTPException(409, "已有同题号题目，必须确认旧题 ID 映射且题型一致")
             question_id = existing["id"]
+            old_passage = db.execute("SELECT passage_id FROM questions WHERE id=?", (question_id,)).fetchone()[0]
+            if passage_id != old_passage:
+                raise HTTPException(409, "文章变更需要人工核对新旧映射，当前不允许覆盖")
             previous = db.execute("SELECT version_no,prompt_text,options_json,correct_answer_json,rationale_text FROM question_versions WHERE question_id=? ORDER BY version_no DESC LIMIT 1", (question_id,)).fetchone()
             if (previous["prompt_text"], previous["options_json"], previous["correct_answer_json"], previous["rationale_text"]) == (
                 question.get("prompt", ""), payload, stored_answer, question.get("rationale", "")):
@@ -127,8 +150,8 @@ def import_question(paper_id: str, question: dict) -> dict:
             version = previous["version_no"] + 1
         else:
             question_id = str(uuid.uuid4())
-            db.execute("INSERT INTO questions(id,paper_id,ordinal,question_kind,lifecycle,created_at) VALUES(?,?,?,?,?,?)",
-                       (question_id, paper_id, ordinal, kind, "ready", now()))
+            db.execute("INSERT INTO questions(id,paper_id,passage_id,ordinal,question_kind,lifecycle,created_at) VALUES(?,?,?,?,?,?,?)",
+                       (question_id, paper_id, passage_id, ordinal, kind, "ready", now()))
             version = 1
         db.execute("INSERT INTO question_versions(id,question_id,version_no,prompt_text,options_json,correct_answer_json,rationale_text,verification_status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
                    (str(uuid.uuid4()), question_id, version, question.get("prompt", ""), payload,

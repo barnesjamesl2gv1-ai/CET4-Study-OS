@@ -4,3 +4,4 @@ python-multipart>=0.0.9,<1
 pytest>=8,<10
 httpx>=0.27,<1
 pypdf==6.21.2
+tinytag==2.3.2

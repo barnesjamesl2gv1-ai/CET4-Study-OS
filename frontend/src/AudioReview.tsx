@@ -1,0 +1,16 @@
+import React from 'react';
+
+type Asset={id:string;role:string;original_filename:string};
+type Suggestion={start_ms:number;end_ms:number;confirmation:string};
+type Segment={id:string;asset_id:string;start_ms:number;end_ms:number;ordinal:number};
+
+export function AudioReview({paperId,assets,onConfirmed}:{paperId:string;assets:Asset[];onConfirmed:()=>void}){
+  const audioAssets=assets.filter(a=>a.role==='audio');
+  const [assetId,setAssetId]=React.useState(''),[suggestions,setSuggestions]=React.useState<Suggestion[]>([]),[segments,setSegments]=React.useState<Segment[]>([]),[start,setStart]=React.useState(0),[end,setEnd]=React.useState(0),[numbers,setNumbers]=React.useState(''),[message,setMessage]=React.useState('');
+  const player=React.useRef<HTMLAudioElement>(null),stopAt=React.useRef<number|null>(null);
+  React.useEffect(()=>{fetch(`/api/papers/${paperId}/segments`).then(r=>r.json()).then(setSegments).catch(()=>{});},[paperId]);
+  async function select(id:string){setAssetId(id);if(!id)return;try{const response=await fetch(`/api/assets/${id}/segment-suggestions`);if(!response.ok)throw new Error('无法分析音频');const rows:Suggestion[]=await response.json();setSuggestions(rows);if(rows.length){setStart(rows[0].start_ms);setEnd(rows[0].end_ms);}}catch(e){setMessage(String(e));}}
+  function preview(){const audio=player.current;if(!audio)return;audio.currentTime=start/1000;stopAt.current=end/1000;audio.play().catch(e=>setMessage(String(e)));}
+  async function confirm(){try{const response=await fetch(`/api/assets/${assetId}/segments`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start_ms:start,end_ms:end,question_numbers:numbers.split(',').map(x=>Number(x.trim()))})});if(!response.ok){const body=await response.json();throw new Error(body.detail||'确认失败');}setSegments(await (await fetch(`/api/papers/${paperId}/segments`)).json());setMessage('片段已确认并保存');onConfirmed();}catch(e){setMessage(String(e));}}
+  return <section><h2>听力片段核对</h2><p>静音检测只给出候选边界。请播放预览、填写对应题号并人工确认；可让同一片段对应多道题。</p><select aria-label="选择音频" value={assetId} onChange={e=>select(e.target.value)}><option value="">选择 MP3</option>{audioAssets.map(a=><option key={a.id} value={a.id}>{a.original_filename}</option>)}</select>{assetId&&<><audio ref={player} src={`/api/assets/${assetId}`} controls onTimeUpdate={e=>{if(stopAt.current!==null&&e.currentTarget.currentTime>=stopAt.current){e.currentTarget.pause();stopAt.current=null;}}}/><div><h3>候选片段</h3>{suggestions.map((s,i)=><button key={i} onClick={()=>{setStart(s.start_ms);setEnd(s.end_ms);}}>候选 {i+1}：{(s.start_ms/1000).toFixed(1)}–{(s.end_ms/1000).toFixed(1)} 秒</button>)}</div><div className="row"><label>开始毫秒<input type="number" min="0" value={start} onChange={e=>setStart(Number(e.target.value))}/></label><label>结束毫秒<input type="number" min="1" value={end} onChange={e=>setEnd(Number(e.target.value))}/></label><label>对应题号（逗号分隔）<input value={numbers} onChange={e=>setNumbers(e.target.value)} placeholder="例如 1,2,3"/></label><button onClick={preview}>预览</button><button onClick={confirm}>确认片段</button></div></>}<ul>{segments.map(s=><li key={`${s.id}-${s.ordinal}`}>第 {s.ordinal} 题：{(s.start_ms/1000).toFixed(1)}–{(s.end_ms/1000).toFixed(1)} 秒</li>)}</ul><p role="status">{message}</p></section>;
+}
