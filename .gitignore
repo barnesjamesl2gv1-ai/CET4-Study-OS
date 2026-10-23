@@ -1,0 +1,14 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+data/
+backups/
+reports/
+*.pdf
+*.docx
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
