@@ -10,7 +10,7 @@
 
 ## 当前可运行内容
 
-`python -m backend.m0_inspect <文件或目录> --output reports/m0.json` 检查输入文件类型、大小、SHA-256 和基础可读性，生成 JSON 报告。PDF 文本提取依赖 PyMuPDF，图片 OCR 依赖 Tesseract 和 pytesseract，音频时长检查依赖 ffprobe。缺少工具时报告明确标记为待验证，不会判定材料可用于正式模考。
+`python -m backend.m0_inspect <文件或目录> --output reports/m0.json` 检查输入文件类型、大小、SHA-256 和基础可读性，生成 JSON 报告。PDF 文本提取依赖 pypdf，图片 OCR 依赖 Tesseract 和 pytesseract，音频时长检查依赖 ffprobe。缺少工具时报告明确标记为待验证，不会判定材料可用于正式模考。
 
 安装可选依赖：`python -m pip install -r backend/requirements-m0.txt`。运行测试：`python -m pytest -q`。
 

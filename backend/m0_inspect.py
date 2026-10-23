@@ -57,13 +57,19 @@ def inspect_file(path: Path) -> dict:
             result["text_characters"] = len(text)
         elif actual == "pdf":
             try:
-                import fitz
+                from pypdf import PdfReader
+                from pypdf.errors import PdfReadError
             except ImportError:
-                result["details"].append("未安装 PyMuPDF，PDF 内容未检查")
+                result["details"].append("未安装 pypdf，PDF 内容未检查")
                 return result
-            with fitz.open(path) as document:
-                result["pages"] = len(document)
-                result["text_characters"] = sum(len(page.get_text()) for page in document)
+            try:
+                document = PdfReader(str(path), strict=True)
+                result["pages"] = len(document.pages)
+                result["text_characters"] = sum(len(page.extract_text() or "") for page in document.pages)
+            except PdfReadError:
+                result["status"] = "invalid"
+                result["details"].append("PDF 内容损坏或无法解析")
+                return result
         elif actual == "image":
             try:
                 import pytesseract
